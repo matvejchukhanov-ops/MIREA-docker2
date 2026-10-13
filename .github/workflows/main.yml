@@ -1,0 +1,160 @@
+# Конвейер файлового менеджера: сборка -> тесты -> SAST -> локальное развёртывание.
+#
+# Локально запускается утилитой act (настройки в .actrc):
+#     act push
+# В GitHub Actions нет ключевого слова stages: стадии — это задания с именами
+# стадий, а строгий порядок задаёт цепочка needs. Следующая стадия стартует,
+# только если предыдущая прошла.
+
+name: CI
+
+on:
+  push:
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.12"
+  IMAGE: filemanager
+  CONTAINER: filemanager
+
+jobs:
+  # ---------------------------------------------------------------- build
+  build:
+    name: "stage: build"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # Синтаксическая ошибка в любом модуле остановит конвейер уже здесь.
+      - name: Compile to bytecode
+        run: python -m compileall -q server client common
+
+      - name: Package sources
+        run: tar czf filemanager-src.tar.gz --exclude=__pycache__ server client common
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build
+          path: filemanager-src.tar.gz
+
+  # ---------------------------------------------------------------- test
+  test:
+    name: "stage: test"
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # Кэш скачанных пакетов. Ключ — хэш списка зависимостей: изменился
+      # список, кэш собирается заново.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements-dev.txt') }}
+
+      - name: Install test tools
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: coverage run --source=server,client,common -m pytest tests --junitxml=reports/junit.xml
+
+      # Cobertura: формат отчёта о покрытии, его понимают GitLab и Jenkins.
+      - name: Coverage report
+        if: always()
+        run: |
+          coverage xml -o reports/coverage.xml
+          coverage report
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports
+          path: reports/
+
+  # ---------------------------------------------------------------- sast
+  sast:
+    name: "stage: sast"
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements-dev.txt') }}
+
+      - name: Install Semgrep
+        run: pip install -r requirements-dev.txt
+
+      # --severity ERROR — только серьёзные находки (High и Critical).
+      # --error — при них ненулевой код выхода, задание и весь конвейер падают.
+      - name: Semgrep scan
+        run: |
+          mkdir -p reports
+          semgrep scan \
+            --config p/python \
+            --config p/secrets \
+            --severity ERROR \
+            --error \
+            --metrics=off \
+            --json-output=reports/semgrep.json \
+            server client common ci
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sast-report
+          path: reports/
+
+  # ---------------------------------------------------------------- deploy
+  deploy:
+    name: "stage: deploy"
+    needs: sast
+    runs-on: ubuntu-latest
+    env:
+      SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" .
+
+      # Порт публикуется только на 127.0.0.1: сервер доступен с этого
+      # компьютера, но не из локальной сети.
+      - name: Run container
+        run: |
+          docker rm -f "$CONTAINER" 2>/dev/null || true
+          docker run -d \
+            --name "$CONTAINER" \
+            --restart unless-stopped \
+            -p 127.0.0.1:9000:9000 \
+            "$IMAGE:${{ github.sha }}"
+
+      - name: Smoke test
+        run: docker exec -i -e SMOKE_PASSWORD "$CONTAINER" python - < ci/smoke.py
+
+      - name: Container logs
+        if: failure()
+        run: docker logs "$CONTAINER"
+
+      - name: Save image
+        run: docker save "$IMAGE:${{ github.sha }}" | gzip > image.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: image.tar.gz
+          compression-level: 0

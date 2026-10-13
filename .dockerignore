@@ -1,0 +1,23 @@
+# В контекст сборки попадает только код. Всё остальное либо не нужно образу,
+# либо не должно в него попасть ни при каких условиях (секреты, данные).
+.git
+.github
+.devcontainer
+.artifacts
+.secrets
+.secrets.*
+.env
+.env.*
+.actrc
+ci
+client
+docs
+tests
+reports
+data
+storage
+**/__pycache__
+**/*.py[cod]
+*.md
+Dockerfile
+.dockerignore

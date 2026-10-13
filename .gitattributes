@@ -1,0 +1,20 @@
+# Нормализуем переводы строк: в репозитории всегда LF, в рабочей копии — как в ОС
+* text=auto
+
+# Скрипты Windows должны остаться с CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Shell-скрипты всегда LF, иначе не запустятся в Linux/Docker
+*.sh text eol=lf
+
+# Бинарники не трогать
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.db binary

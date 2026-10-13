@@ -1,0 +1,87 @@
+# --- Секреты и локальная конфигурация ---
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets.*
+config.local.*
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Node / JS ---
+node_modules/
+dist/
+build/
+.next/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+
+# --- Java / Kotlin ---
+target/
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+.gradle/
+
+# --- C / C++ ---
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+
+# --- C# / .NET ---
+bin/
+obj/
+*.user
+*.suo
+
+# --- Go ---
+/vendor/
+
+# --- Базы данных и данные ---
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+data/
+storage/
+dumps/
+
+# --- Логи ---
+*.log
+logs/
+
+# --- IDE и редакторы ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# --- ОС ---
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# --- Конвейер (act) ---
+.secrets
+.artifacts/
+reports/
+image.tar.gz
+filemanager-src.tar.gz
