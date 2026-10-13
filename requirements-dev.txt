@@ -4,3 +4,6 @@
 pytest==8.3.4
 coverage==7.6.10
 semgrep==1.101.0
+# Semgrep через opentelemetry импортирует pkg_resources, а в Python 3.12
+# setuptools по умолчанию больше не ставится.
+setuptools==75.8.0
