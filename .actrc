@@ -2,3 +2,4 @@
 --artifact-server-path=.artifacts
 --secret-file=.secrets
 --container-daemon-socket=/var/run/docker.sock
+--pull=false
