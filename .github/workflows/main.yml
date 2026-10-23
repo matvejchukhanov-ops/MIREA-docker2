@@ -16,6 +16,9 @@ env:
   PYTHON_VERSION: "3.12"
   IMAGE: filemanager
   CONTAINER: filemanager
+  WEB_IMAGE: filemanager-web
+  WEB_CONTAINER: filemanager-web
+  NETWORK: filemanager-net
 
 jobs:
   # ---------------------------------------------------------------- build
@@ -31,10 +34,10 @@ jobs:
 
       # Синтаксическая ошибка в любом модуле остановит конвейер уже здесь.
       - name: Compile to bytecode
-        run: python -m compileall -q server client common
+        run: python -m compileall -q server client common web
 
       - name: Package sources
-        run: tar czf filemanager-src.tar.gz --exclude=__pycache__ server client common
+        run: tar czf filemanager-src.tar.gz --exclude=__pycache__ server client common web
 
       - uses: actions/upload-artifact@v4
         with:
@@ -64,7 +67,7 @@ jobs:
         run: pip install -r requirements-dev.txt
 
       - name: Run tests
-        run: coverage run --source=server,client,common -m pytest tests --junitxml=reports/junit.xml
+        run: coverage run --source=server,client,common,web -m pytest tests --junitxml=reports/junit.xml
 
       # Cobertura: формат отчёта о покрытии, его понимают GitLab и Jenkins.
       - name: Coverage report
@@ -101,17 +104,20 @@ jobs:
 
       # --severity ERROR — только серьёзные находки (High и Critical).
       # --error — при них ненулевой код выхода, задание и весь конвейер падают.
+      # p/javascript проверяет страницу веб-интерфейса: innerHTML, eval и
+      # другие пути к XSS.
       - name: Semgrep scan
         run: |
           mkdir -p reports
           semgrep scan \
             --config p/python \
+            --config p/javascript \
             --config p/secrets \
             --severity ERROR \
             --error \
             --metrics=off \
             --json-output=reports/semgrep.json \
-            server client common ci
+            server client common web ci
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -129,33 +135,50 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build image
-        run: docker build -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" .
-
-      # Порт публикуется только на 127.0.0.1: сервер доступен с этого
-      # компьютера, но не из локальной сети. База и файлы пользователей —
-      # в именованных томах: новый контейнер подключает те же тома, и
-      # пользователи с файлами переживают повторное развёртывание.
-      - name: Run container
+      - name: Build images
         run: |
-          docker rm -f "$CONTAINER" 2>/dev/null || true
+          docker build -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" .
+          docker build --target web -t "$WEB_IMAGE:${{ github.sha }}" -t "$WEB_IMAGE:latest" .
+
+      # Сервер и веб-интерфейс в общей сети Docker: шлюз находит сервер по
+      # имени контейнера. Порты публикуются только на 127.0.0.1: с этого
+      # компьютера доступны, из локальной сети нет. База и файлы — в
+      # именованных томах: новый контейнер подключает те же тома, и
+      # пользователи с файлами переживают повторное развёртывание.
+      - name: Run containers
+        run: |
+          docker network create "$NETWORK" 2>/dev/null || true
+          docker rm -f "$WEB_CONTAINER" "$CONTAINER" 2>/dev/null || true
           docker run -d \
             --name "$CONTAINER" \
+            --network "$NETWORK" \
             --restart unless-stopped \
             -p 127.0.0.1:9000:9000 \
             -v filemanager-data:/app/data \
             -v filemanager-storage:/app/storage \
             "$IMAGE:${{ github.sha }}"
+          docker run -d \
+            --name "$WEB_CONTAINER" \
+            --network "$NETWORK" \
+            --restart unless-stopped \
+            -p 127.0.0.1:8080:8080 \
+            -e FM_SERVER_HOST="$CONTAINER" \
+            "$WEB_IMAGE:${{ github.sha }}"
 
-      - name: Smoke test
+      - name: Smoke test (server)
         run: docker exec -i -e SMOKE_PASSWORD "$CONTAINER" python - < ci/smoke.py
+
+      - name: Smoke test (web)
+        run: docker exec -i "$WEB_CONTAINER" python - < ci/web_smoke.py
 
       - name: Container logs
         if: failure()
-        run: docker logs "$CONTAINER"
+        run: |
+          docker logs "$CONTAINER"
+          docker logs "$WEB_CONTAINER"
 
-      - name: Save image
-        run: docker save "$IMAGE:${{ github.sha }}" | gzip > image.tar.gz
+      - name: Save images
+        run: docker save "$IMAGE:${{ github.sha }}" "$WEB_IMAGE:${{ github.sha }}" | gzip > image.tar.gz
 
       - uses: actions/upload-artifact@v4
         with:

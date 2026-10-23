@@ -10,7 +10,6 @@
 .env.*
 .actrc
 ci
-client
 docs
 tests
 reports

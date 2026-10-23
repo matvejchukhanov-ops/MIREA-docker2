@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Файловый менеджер</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <!-- Вход и регистрация -->
+  <main id="login-view" class="login" hidden>
+    <section class="login-card" aria-labelledby="login-title">
+      <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span>Файловый менеджер</span></div>
+      <h1 id="login-title">Вход</h1>
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" id="tab-login" aria-selected="true">Вход</button>
+        <button type="button" role="tab" id="tab-register" aria-selected="false">Регистрация</button>
+      </div>
+      <form id="login-form" novalidate>
+        <label for="login-username">Логин</label>
+        <input id="login-username" name="username" autocomplete="username" required maxlength="32">
+        <label for="login-password">Пароль</label>
+        <input id="login-password" name="password" type="password" autocomplete="current-password" required maxlength="256">
+        <div id="repeat-row" hidden>
+          <label for="login-repeat">Пароль ещё раз</label>
+          <input id="login-repeat" name="repeat" type="password" autocomplete="new-password" maxlength="256">
+        </div>
+        <p id="login-hint" class="hint" hidden>Логин: 3–32 символа, латиница, цифры, «_», «.», «-». Пароль: не короче 8 символов, буквы вместе с цифрами или другими символами.</p>
+        <p id="login-error" class="form-error" role="alert"></p>
+        <button type="submit" class="primary" id="login-submit">Войти</button>
+      </form>
+      <p class="login-foot">Пароль уходит на сервер, хранится только его хэш scrypt. Пять неудачных попыток подряд блокируют учётную запись на 5 минут.</p>
+    </section>
+  </main>
+
+  <!-- Приложение -->
+  <div id="app-view" class="app" hidden>
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span>Файловый менеджер</span></div>
+      <span id="server-status" class="status-pill" title="Связь с сервером">сервер: …</span>
+      <span class="spacer"></span>
+      <span id="current-user" class="user"></span>
+      <button type="button" id="logout-button" class="ghost">Выйти</button>
+    </header>
+
+    <nav class="sidebar" aria-label="Разделы">
+      <button type="button" class="nav-item" data-view="files" aria-current="page">Файлы</button>
+      <button type="button" class="nav-item" data-view="drives">Диски</button>
+      <button type="button" class="nav-item" data-view="log">Журнал действий</button>
+      <button type="button" class="nav-item" data-view="ops">Операции с файлами</button>
+    </nav>
+
+    <main class="content">
+      <!-- Файлы -->
+      <section id="view-files" class="view" aria-labelledby="files-title">
+        <div class="view-head">
+          <h2 id="files-title">Файлы</h2>
+          <nav id="breadcrumbs" class="breadcrumbs" aria-label="Путь"></nav>
+        </div>
+        <div class="toolbar">
+          <button type="button" id="btn-up" class="ghost" title="На уровень выше">↑ Вверх</button>
+          <button type="button" id="btn-new-file">Новый файл</button>
+          <button type="button" id="btn-new-dir">Новая папка</button>
+          <button type="button" id="btn-upload">Загрузить с компьютера</button>
+          <input type="file" id="upload-input" hidden multiple>
+          <button type="button" id="btn-zip" disabled>Упаковать в ZIP</button>
+          <span class="spacer"></span>
+          <button type="button" id="btn-refresh" class="ghost">Обновить</button>
+        </div>
+        <div class="table-wrap">
+          <table class="files">
+            <thead>
+              <tr>
+                <th class="col-check"><input type="checkbox" id="select-all" aria-label="Выбрать все"></th>
+                <th>Имя</th>
+                <th class="col-size">Размер</th>
+                <th class="col-date">Изменён (UTC)</th>
+                <th class="col-actions"><span class="visually-hidden">Действия</span></th>
+              </tr>
+            </thead>
+            <tbody id="files-body"></tbody>
+          </table>
+        </div>
+        <p id="files-note" class="note" hidden></p>
+      </section>
+
+      <!-- Диски -->
+      <section id="view-drives" class="view" aria-labelledby="drives-title" hidden>
+        <div class="view-head">
+          <h2 id="drives-title">Диски сервера</h2>
+          <button type="button" class="ghost" id="drives-refresh">Обновить</button>
+        </div>
+        <div id="drives-list" class="drives"></div>
+      </section>
+
+      <!-- Журнал действий -->
+      <section id="view-log" class="view" aria-labelledby="log-title" hidden>
+        <div class="view-head">
+          <h2 id="log-title">Журнал действий</h2>
+          <label class="inline">Показать
+            <select id="log-limit"><option>20</option><option>50</option><option>100</option><option>500</option></select>
+          </label>
+          <button type="button" class="ghost" id="log-refresh">Обновить</button>
+        </div>
+        <p class="note">Каждое действие, включая отказы. Записи только добавляются: изменить или удалить их запрещают триггеры базы.</p>
+        <div class="table-wrap">
+          <table class="grid">
+            <thead><tr><th>Время (UTC)</th><th>Действие</th><th>Объект</th><th>Итог</th><th>Код</th><th>Адрес</th></tr></thead>
+            <tbody id="log-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Операции с файлами -->
+      <section id="view-ops" class="view" aria-labelledby="ops-title" hidden>
+        <div class="view-head">
+          <h2 id="ops-title">Операции с файлами</h2>
+          <label class="inline">Показать
+            <select id="ops-limit"><option>20</option><option>50</option><option>100</option><option>500</option></select>
+          </label>
+          <label class="inline">Путь <input id="ops-path" placeholder="все файлы"></label>
+          <button type="button" class="ghost" id="ops-refresh">Обновить</button>
+        </div>
+        <div class="table-wrap">
+          <table class="grid">
+            <thead><tr><th>Время (UTC)</th><th>Операция</th><th>Файл</th><th>Запись в базе</th></tr></thead>
+            <tbody id="ops-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="dialog" aria-labelledby="dialog-title">
+    <form method="dialog" id="dialog-form">
+      <header class="dialog-head">
+        <h3 id="dialog-title"></h3>
+        <button type="button" class="ghost icon" id="dialog-close" aria-label="Закрыть">✕</button>
+      </header>
+      <div id="dialog-body" class="dialog-body"></div>
+      <footer id="dialog-foot" class="dialog-foot"></footer>
+    </form>
+  </dialog>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+</body>
+</html>
