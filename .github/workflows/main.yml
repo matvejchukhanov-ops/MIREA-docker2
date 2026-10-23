@@ -19,6 +19,7 @@ env:
   WEB_IMAGE: filemanager-web
   WEB_CONTAINER: filemanager-web
   NETWORK: filemanager-net
+  NETWORK_SUBNET: 10.231.0.0/24
 
 jobs:
   # ---------------------------------------------------------------- build
@@ -145,9 +146,13 @@ jobs:
       # компьютера доступны, из локальной сети нет. База и файлы — в
       # именованных томах: новый контейнер подключает те же тома, и
       # пользователи с файлами переживают повторное развёртывание.
+      #
+      # Подсеть задана явно. Автоматически Docker выдал 172.19.0.0/16, а на
+      # Windows этот адрес уже занят адаптером, на котором act держит сервер
+      # артефактов: после создания сети выгрузка артефактов падала.
       - name: Run containers
         run: |
-          docker network create "$NETWORK" 2>/dev/null || true
+          docker network create --subnet "$NETWORK_SUBNET" "$NETWORK" 2>/dev/null || true
           docker rm -f "$WEB_CONTAINER" "$CONTAINER" 2>/dev/null || true
           docker run -d \
             --name "$CONTAINER" \
