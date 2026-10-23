@@ -13,16 +13,18 @@ Docker-контейнерах.
 build ──► test ──► sast ──► deploy
   │         │        │         │
   ▼         ▼        ▼         ▼
-src.tar.gz  junit.xml   semgrep.json  image.tar.gz
-            coverage.xml              + контейнер filemanager на 127.0.0.1:9000
+src.tar.gz  junit.xml   semgrep.json  image.tar.gz (сервер + веб-интерфейс)
+            coverage.xml              + контейнеры:
+                                        filemanager      127.0.0.1:9000 (TCP)
+                                        filemanager-web  127.0.0.1:8080 (браузер)
 ```
 
 | Стадия | Что делает | Артефакт |
 |---|---|---|
 | `build` | Компилирует весь код в байт-код, упаковывает исходники | `filemanager-src.tar.gz` |
 | `test` | Прогоняет тесты через pytest, считает покрытие | `junit.xml` (JUnit), `coverage.xml` (Cobertura) |
-| `sast` | Semgrep с правилами `p/python` и `p/secrets`; находка уровня ERROR останавливает конвейер | `semgrep.json` |
-| `deploy` | Собирает образ, запускает контейнер, проверяет его smoke-тестом | `image.tar.gz` |
+| `sast` | Semgrep с правилами `p/python`, `p/javascript` и `p/secrets`; находка уровня ERROR останавливает конвейер | `semgrep.json` |
+| `deploy` | Собирает два образа, запускает сервер и веб-интерфейс, проверяет оба smoke-тестами | `image.tar.gz` |
 
 ## Соответствие требованиям задания
 
@@ -34,7 +36,7 @@ src.tar.gz  junit.xml   semgrep.json  image.tar.gz
 | Кэширование зависимостей | `actions/cache` для `~/.cache/pip`, ключ — хэш `requirements-dev.txt` |
 | Артефакты | `actions/upload-artifact` в каждой стадии, act складывает их в `.artifacts/` |
 | Явные стадии | Задания `build`, `test`, `sast`, `deploy`, порядок задан цепочкой `needs` |
-| Multi-stage build | [Dockerfile](Dockerfile): стадия `builder` и итоговый `python:3.12-slim` |
+| Multi-stage build | [Dockerfile](Dockerfile): стадия `builder`, образ `web` и итоговый образ сервера на `python:3.12-slim` |
 | Непривилегированный пользователь | В образе пользователь `app` (uid 10001), код принадлежит root |
 
 Подробный разбор с теорией и рисками — [docs/ci-cd.md](docs/ci-cd.md).
@@ -43,14 +45,16 @@ src.tar.gz  junit.xml   semgrep.json  image.tar.gz
 
 ```
 .github/workflows/main.yml   конвейер
-Dockerfile, .dockerignore    образ сервера
+Dockerfile, .dockerignore    образы сервера и веб-интерфейса
 .actrc                       настройки act
 .secrets.example             образец файла секретов
 requirements-dev.txt         инструменты конвейера: pytest, coverage, semgrep
 ci/smoke.py                  проверка развёрнутого сервера
+ci/web_smoke.py              проверка развёрнутого веб-интерфейса и его защиты
 .devcontainer/               одинаковое окружение разработки в VS Code
 server/ client/ common/      файловый менеджер (задание № 1)
-tests/                       тесты файлового менеджера
+web/                         веб-интерфейс: HTTP-шлюз и страница
+tests/                       тесты, 255
 docs/ci-cd.md                отчёт
 ```
 
@@ -67,14 +71,28 @@ docs/ci-cd.md                отчёт
    act push
    ```
    Отдельная стадия: `act -j test`. Список стадий: `act -l`.
-3. После успешного прогона сервер работает в контейнере `filemanager`.
-   Подключиться клиентом:
-   ```
-   python -m client.main
-   ```
+3. После успешного прогона работают два контейнера:
+   - веб-интерфейс — открыть в браузере http://127.0.0.1:8080
+   - сервер — консольный клиент: `python -m client.main`
 
 Артефакты лежат в `.artifacts/<номер прогона>/`. Образ из артефакта
 загружается на другой машине командой `docker load -i image.tar.gz`.
 
-Без конвейера сервер и клиент запускаются как в задании № 1:
-`python -m server.main` и `python -m client.main`, нужен только Python 3.11+.
+Без конвейера всё запускается на Python 3.11+ без установки пакетов:
+`python -m server.main`, затем `python -m web.main` (браузер) или
+`python -m client.main` (консоль).
+
+## Веб-интерфейс
+
+Браузер не умеет говорить с сервером по его TCP-протоколу, поэтому между
+ними стоит шлюз `web/gateway.py`: он принимает запросы страницы по HTTP и
+пересылает их серверу кадрами протокола, на каждую вкладку — своё
+соединение. Доступны все команды: вход и регистрация, файлы и папки,
+редактор текста, JSON и XML, ZIP, загрузка с компьютера и скачивание,
+свойства с записью из базы, диски, журналы действий и операций.
+
+Шлюз — новая точка входа, поэтому у него своя защита: проверка `Host`
+(DNS rebinding), заголовок `X-FM-Request`, тип `application/json` и проверка
+`Origin` (CSRF), CSP без встроенных скриптов (XSS), cookie `HttpOnly` и
+`SameSite=Strict`, новый токен сессии после входа, белый список команд,
+строгий разбор JSON. Подробно — [docs/ci-cd.md](docs/ci-cd.md#10-веб-интерфейс).

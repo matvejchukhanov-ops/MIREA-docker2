@@ -208,8 +208,8 @@ function enterApp(username) {
   $("current-user").textContent = username;
   $("login-view").hidden = true;
   $("app-view").hidden = false;
+  state.cwd = "";
   showView("files");
-  loadDir("");
   pingServer();
   clearInterval(state.pingTimer);
   state.pingTimer = setInterval(pingServer, PING_INTERVAL);
@@ -313,7 +313,6 @@ function fileRow(entry) {
     updateSelection();
   });
   const actions = el("div", { class: "row-actions" },
-    isZip ? el("button", { type: "button", text: "Содержимое", onclick: () => openZip(path) }) : null,
     isZip ? el("button", { type: "button", text: "Распаковать", onclick: () => unzipDialog(path) }) : null,
     el("button", { type: "button", text: "Свойства", onclick: () => showInfo(path) }),
     !isDir && !isZip ? el("button", { type: "button", text: "Скачать", onclick: () => download(path) }) : null,
@@ -323,7 +322,7 @@ function fileRow(entry) {
     el("td", { class: "col-check" }, check),
     el("td", {}, el("div", { class: "name-cell" },
       el("span", { class: isDir ? "kind dir" : "kind", text: kindLabel(entry) }),
-      el("button", { type: "button", text: entry.name, title: isDir ? "Открыть папку" : "Открыть файл", onclick: () => openEntry(entry, path) }))),
+      el("button", { type: "button", text: entry.name, onclick: () => openEntry(entry, path) }))),
     el("td", { class: "col-size", text: isDir ? "—" : humanSize(entry.size) }),
     el("td", { class: "col-date mono", text: entry.modified || "" }),
     el("td", { class: "col-actions" }, actions),

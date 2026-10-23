@@ -76,7 +76,7 @@ label.inline { display: inline-flex; align-items: center; gap: 6px; }
   padding: 26px 26px 20px; display: flex; flex-direction: column; gap: 14px;
 }
 .login-card h1 { margin: 0; font-size: 22px; font-weight: 600; }
-.login-card form { display: flex; flex-direction: column; gap: 6px; }
+.login-card form, .login-card form > div { display: flex; flex-direction: column; gap: 6px; }
 .login-card form input { margin-bottom: 6px; }
 .login-card form .primary { margin-top: 6px; padding: 9px 14px; }
 .login-foot { margin: 0; color: var(--muted); font-size: 12.5px; border-top: 1px dashed var(--line); padding-top: 12px; }
@@ -130,10 +130,13 @@ th { font-size: 12px; font-weight: 600; color: var(--muted); background: var(--p
 tr:last-child td { border-bottom: 0; }
 tbody tr:hover td { background: var(--panel-2); }
 td { font-variant-numeric: tabular-nums; }
+table.files { min-width: 720px; }
+.files th:nth-child(2), .files td:nth-child(2) { min-width: 220px; }
 .col-check { width: 34px; }
 .col-size { width: 110px; text-align: right; }
 td.col-size { text-align: right; }
-.col-date { width: 170px; }
+.col-date { width: 170px; white-space: nowrap; }
+.grid td:first-child { white-space: nowrap; }
 .col-actions { width: 1%; white-space: nowrap; }
 .empty td { color: var(--muted); text-align: center; padding: 28px; }
 .name-cell { display: flex; align-items: center; gap: 9px; min-width: 0; }
