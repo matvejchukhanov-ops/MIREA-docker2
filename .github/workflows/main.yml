@@ -176,6 +176,20 @@ jobs:
       - name: Smoke test (web)
         run: docker exec -i "$WEB_CONTAINER" python - < ci/web_smoke.py
 
+      # Процесс приложения не должен менять ничего, кроме data/ и storage/.
+      # Иначе уязвимость в сервере позволила бы переписать его собственный код.
+      - name: Code is read-only
+        run: |
+          for c in "$CONTAINER" "$WEB_CONTAINER"; do
+            writable=$(docker exec "$c" find /app -path /app/data -prune -o -path /app/storage -prune -o -writable -print)
+            if [ -n "$writable" ]; then
+              echo "В контейнере $c процесс приложения может изменять:"
+              echo "$writable"
+              exit 1
+            fi
+            echo "$c: код только для чтения"
+          done
+
       - name: Container logs
         if: failure()
         run: |
