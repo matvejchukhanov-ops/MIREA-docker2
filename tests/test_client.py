@@ -3,7 +3,15 @@ from __future__ import annotations
 
 import unittest
 
-from client.commands import COMMANDS, Input, UsageError, build_request, help_text, local_action
+from client.commands import (
+    COMMANDS,
+    Input,
+    RawRequest,
+    UsageError,
+    build_request,
+    help_text,
+    local_action,
+)
 from client.render import human_size, render
 
 
@@ -62,6 +70,26 @@ class BuildRequestTests(unittest.TestCase):
         )
         with self.assertRaises(UsageError):
             build_request("json-write a.json", scripted(block="{oops"))
+
+    def test_json_с_дубликатом_ключа_не_отправляется(self) -> None:
+        # Обычный json.loads вернул бы {"role": "admin"}, и сервер записал бы
+        # файл уже без дубликата, ничего не заметив.
+        with self.assertRaises(UsageError):
+            build_request("json-write a.json", scripted(block='{"role": "user", "role": "admin"}'))
+        with self.assertRaises(UsageError):
+            build_request("json-write a.json", scripted(block='{"a": {"b": 1, "b": 2}}'))
+
+    def test_json_с_nan_не_отправляется(self) -> None:
+        with self.assertRaises(UsageError):
+            build_request("json-write a.json", scripted(block='{"x": NaN}'))
+
+    def test_сырой_json_уходит_как_введён(self) -> None:
+        # Сырой ввод нужен, чтобы проверять реакцию сервера на нарушения,
+        # поэтому дубликат ключа должен дойти до сервера, а не исчезнуть.
+        line = '{"cmd":"json_write","path":"a.json","data":{"role":"user","role":"admin"}}'
+        request = build_request(line, scripted())
+        self.assertIsInstance(request, RawRequest)
+        self.assertEqual(request.raw, line)
 
     def test_zip(self) -> None:
         self.assertEqual(

@@ -70,6 +70,26 @@ class ParseRequestTests(unittest.TestCase):
             parse_request(frame)
         self.assertEqual(ctx.exception.code, ErrorCode.BAD_JSON)
 
+    def test_дубликат_ключа_в_запросе(self) -> None:
+        # json.loads молча взял бы последнее значение. Запрос с двумя cmd
+        # неоднозначен: какую команду имел в виду отправитель — неизвестно.
+        with self.assertRaises(ProtocolError) as ctx:
+            parse_request(b'{"cmd":"ping","cmd":"quit"}')
+        self.assertEqual(ctx.exception.code, ErrorCode.BAD_JSON)
+
+    def test_дубликат_ключа_во_вложенных_данных(self) -> None:
+        # Тот самый случай: без проверки файл записался бы как {"role": "admin"}.
+        frame = b'{"cmd":"json_write","path":"a.json","data":{"role":"user","role":"admin"}}'
+        with self.assertRaises(ProtocolError) as ctx:
+            parse_request(frame)
+        self.assertEqual(ctx.exception.code, ErrorCode.BAD_JSON)
+
+    def test_nan_и_бесконечность_в_запросе(self) -> None:
+        for value in (b"NaN", b"Infinity", b"-Infinity"):
+            with self.subTest(value=value), self.assertRaises(ProtocolError) as ctx:
+                parse_request(b'{"cmd":"json_write","path":"a.json","data":' + value + b"}")
+            self.assertEqual(ctx.exception.code, ErrorCode.BAD_JSON)
+
     def test_нет_поля_cmd(self) -> None:
         with self.assertRaises(ProtocolError) as ctx:
             parse_request(b'{"path":"a.txt"}')

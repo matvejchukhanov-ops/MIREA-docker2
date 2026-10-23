@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+from common import strict_json
 from common.framing import encode_frame
 
 
@@ -169,8 +170,13 @@ def parse_request(frame: bytes) -> Request:
     except UnicodeDecodeError as exc:
         raise ProtocolError(ErrorCode.BAD_JSON, "Сообщение не в кодировке UTF-8") from exc
 
+    # Строгий разбор: дубликат ключа или NaN в запросе — такое же нарушение,
+    # как и в файле. Иначе {"role": "user", "role": "admin"} в поле data
+    # пройдёт мимо проверки и запишется в файл уже без дубликата.
     try:
-        data = json.loads(text)
+        data = strict_json.loads(text)
+    except strict_json.JSONRuleError as exc:
+        raise ProtocolError(ErrorCode.BAD_JSON, str(exc)) from exc
     except json.JSONDecodeError as exc:
         raise ProtocolError(
             ErrorCode.BAD_JSON, f"Не удалось разобрать JSON: {exc.msg}", position=exc.pos

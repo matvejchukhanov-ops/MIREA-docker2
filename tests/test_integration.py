@@ -176,6 +176,18 @@ class ProtocolOverSocketTests(ServerTestCase):
             self.assertEqual(peer.receive()["code"], "FRAME_TOO_LONG")
             self.assertTrue(peer.server_closed())
 
+    def test_дубликат_ключа_не_доходит_до_файла(self) -> None:
+        # Клиента можно обойти и писать в сокет напрямую, поэтому проверка
+        # обязана быть на сервере, а не только в клиенте.
+        with self.connect_as("alice", register=True) as peer:
+            peer.send_raw(
+                encode_frame(
+                    b'{"cmd":"json_write","path":"role.json","data":{"role":"user","role":"admin"}}'
+                )
+            )
+            self.assertEqual(peer.receive()["code"], "BAD_JSON")
+            self.assertEqual(peer.ask({"cmd": "info", "path": "role.json"})["code"], "NOT_FOUND")
+
     def test_сервер_жив_после_нарушений(self) -> None:
         with self.connect() as peer:
             peer.send_raw(b"x" * (FRAME_LIMIT + 100))

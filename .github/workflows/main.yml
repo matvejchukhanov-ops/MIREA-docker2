@@ -133,7 +133,9 @@ jobs:
         run: docker build -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" .
 
       # Порт публикуется только на 127.0.0.1: сервер доступен с этого
-      # компьютера, но не из локальной сети.
+      # компьютера, но не из локальной сети. База и файлы пользователей —
+      # в именованных томах: новый контейнер подключает те же тома, и
+      # пользователи с файлами переживают повторное развёртывание.
       - name: Run container
         run: |
           docker rm -f "$CONTAINER" 2>/dev/null || true
@@ -141,6 +143,8 @@ jobs:
             --name "$CONTAINER" \
             --restart unless-stopped \
             -p 127.0.0.1:9000:9000 \
+            -v filemanager-data:/app/data \
+            -v filemanager-storage:/app/storage \
             "$IMAGE:${{ github.sha }}"
 
       - name: Smoke test

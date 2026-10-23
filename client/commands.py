@@ -11,6 +11,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from common import strict_json
+
 # Строка из одной точки завершает ввод многострочного текста — как в SMTP.
 END_OF_TEXT = "."
 
@@ -19,6 +21,14 @@ FORCE_FLAGS = {"--force", "-f"}
 
 class UsageError(ValueError):
     """Команда введена неверно. Сообщение — подсказка пользователю."""
+
+
+class RawRequest(dict):
+    """Запрос, введённый сырым JSON: уходит на сервер введённым текстом."""
+
+    def __init__(self, data: dict[str, Any], *, raw: str) -> None:
+        super().__init__(data)
+        self.raw = raw
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,10 +100,12 @@ def build_request(line: str, source: Input) -> dict[str, Any] | None:
     text = line.strip()
 
     # Сырой JSON пропускаем как есть: так можно вручную проверить, как сервер
-    # реагирует на нарушения протокола, не переписывая клиент.
+    # реагирует на нарушения протокола, не переписывая клиент. Отправляется
+    # именно введённый текст: после json.loads и json.dumps дубликат ключа
+    # исчез бы, и до сервера нарушение не дошло бы.
     if text.startswith("{"):
         try:
-            return json.loads(text)
+            return RawRequest(json.loads(text), raw=text)
         except json.JSONDecodeError as exc:
             raise UsageError(f"Некорректный JSON: {exc.msg}") from exc
 
@@ -152,10 +164,16 @@ def build_request(line: str, source: Input) -> dict[str, Any] | None:
     if name == "json-write":
         _expect(name, args, 1, 1)
         raw = source.text_block("Введите JSON")
+        # Обычный json.loads молча оставил бы последнее значение
+        # повторяющегося ключа и отправил серверу уже «чистый» объект.
         try:
-            data = json.loads(raw)
+            data = strict_json.loads(raw)
+        except strict_json.JSONRuleError as exc:
+            raise UsageError(f"Некорректный JSON: {exc}") from exc
         except json.JSONDecodeError as exc:
             raise UsageError(f"Некорректный JSON: {exc.msg} (строка {exc.lineno})") from exc
+        except RecursionError as exc:
+            raise UsageError("Некорректный JSON: слишком глубокая вложенность") from exc
         return {"cmd": "json_write", "path": args[0], "data": data, "overwrite": force}
 
     if name == "xml-write":

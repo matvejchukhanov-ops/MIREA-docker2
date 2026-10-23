@@ -41,6 +41,8 @@ import xml.etree.ElementTree as ET
 from typing import Any
 from xml.parsers import expat
 
+from common import strict_json
+
 from .errors import BadFormatError
 
 MAX_DEPTH = 32
@@ -52,11 +54,9 @@ MAX_XML_ELEMENTS = 10_000
 def parse_json(text: str) -> Any:
     """Текст -> значение JSON (только примитивы, списки и словари)."""
     try:
-        value = json.loads(
-            text,
-            object_pairs_hook=_reject_duplicate_keys,
-            parse_constant=_reject_constant,
-        )
+        value = strict_json.loads(text)
+    except strict_json.JSONRuleError as exc:
+        raise BadFormatError(str(exc)) from exc
     except json.JSONDecodeError as exc:
         raise BadFormatError(
             f"Некорректный JSON: {exc.msg} (строка {exc.lineno}, столбец {exc.colno})"
@@ -92,19 +92,6 @@ def check_json_value(value: Any, depth: int = 0) -> None:
             raise BadFormatError("NaN и бесконечность в JSON недопустимы")
     elif value is not None and not isinstance(value, (str, int, bool)):
         raise BadFormatError(f"Тип {type(value).__name__} в JSON недопустим")
-
-
-def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise BadFormatError(f"Ключ {key!r} повторяется в одном объекте")
-        result[key] = value
-    return result
-
-
-def _reject_constant(name: str) -> Any:
-    raise BadFormatError(f"Значение {name} не входит в стандарт JSON")
 
 
 # --- XML ---

@@ -18,7 +18,15 @@ from typing import Any
 
 from common.framing import FrameTooLongError
 
-from .commands import END_OF_TEXT, Input, UsageError, build_request, help_text, local_action
+from .commands import (
+    END_OF_TEXT,
+    Input,
+    RawRequest,
+    UsageError,
+    build_request,
+    help_text,
+    local_action,
+)
 from .connection import ServerClosedConnection, ServerConnection
 from .render import render
 
@@ -77,8 +85,12 @@ def _confirm(prompt: str) -> bool:
 
 def exchange(connection: ServerConnection, request: dict[str, Any]) -> Any:
     """Отправить запрос и дождаться разобранного ответа."""
+    if isinstance(request, RawRequest):
+        payload = request.raw
+    else:
+        payload = json.dumps(request, ensure_ascii=False)
     try:
-        connection.send(json.dumps(request, ensure_ascii=False).encode("utf-8"))
+        connection.send(payload.encode("utf-8"))
         reply = connection.receive()
     except FrameTooLongError as exc:
         raise ExchangeFailed(f"Ответ сервера не укладывается в допустимый размер: {exc}") from exc
