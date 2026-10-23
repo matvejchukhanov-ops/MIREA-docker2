@@ -16,6 +16,7 @@ import socket
 import threading
 import time
 import unittest
+from collections.abc import Callable
 
 from common.framing import FrameReader, encode_frame
 from server.config import ServerConfig, frame_size_for
@@ -291,11 +292,16 @@ class ConnectionLimitTests(ServerTestCase):
 
     def test_лишний_клиент_получает_внятный_отказ(self) -> None:
         # Молчаливый разрыв выглядел бы для клиента как поломка сети.
+        #
+        # Пробное подключение из setUp закрывается сразу, но поток сервера
+        # освобождает его место не мгновенно. Пока место занято, второе
+        # «удерживаемое» подключение получило бы отказ вместо места, и
+        # «лишний» клиент занял бы освободившееся — тест падал бы не на
+        # каждом прогоне. Поэтому сначала ждём, пока сервер освободится.
+        self._wait_for_active(lambda n: n == 0, "пробное подключение не освободило место")
         held = [self.connect() for _ in range(2)]
         try:
-            deadline = time.monotonic() + 5
-            while self.server.active_connections < 2 and time.monotonic() < deadline:
-                time.sleep(0.02)
+            self._wait_for_active(lambda n: n == 2, "сервер не принял оба подключения")
 
             with self.connect() as extra:
                 reply = extra.receive()
@@ -304,14 +310,19 @@ class ConnectionLimitTests(ServerTestCase):
 
             # Освободилось место — новый клиент обслуживается.
             held.pop().close()
-            deadline = time.monotonic() + 5
-            while self.server.active_connections >= 2 and time.monotonic() < deadline:
-                time.sleep(0.02)
+            self._wait_for_active(lambda n: n < 2, "место не освободилось после закрытия")
             with self.connect() as peer:
                 self.assertEqual(peer.ask({"cmd": "ping"})["result"], "pong")
         finally:
             for peer in held:
                 peer.close()
+
+    def _wait_for_active(self, condition: Callable[[int], bool], message: str) -> None:
+        deadline = time.monotonic() + 5
+        while not condition(self.server.active_connections):
+            if time.monotonic() > deadline:
+                self.fail(f"{message}: активных подключений {self.server.active_connections}")
+            time.sleep(0.02)
 
 
 if __name__ == "__main__":
