@@ -107,18 +107,30 @@ jobs:
       # --error — при них ненулевой код выхода, задание и весь конвейер падают.
       # p/javascript проверяет страницу веб-интерфейса: innerHTML, eval и
       # другие пути к XSS.
+      #
+      # Наборы правил Semgrep скачивает с semgrep.dev при каждом запуске.
+      # Код выхода 1 — найдены уязвимости: конвейер останавливается сразу.
+      # Код 2 — сам запуск не удался (например, semgrep.dev не ответил):
+      # это не результат проверки, поэтому делается ещё до двух попыток.
       - name: Semgrep scan
         run: |
           mkdir -p reports
-          semgrep scan \
-            --config p/python \
-            --config p/javascript \
-            --config p/secrets \
-            --severity ERROR \
-            --error \
-            --metrics=off \
-            --json-output=reports/semgrep.json \
-            server client common web ci
+          for attempt in 1 2 3; do
+            status=0
+            semgrep scan \
+              --config p/python \
+              --config p/javascript \
+              --config p/secrets \
+              --severity ERROR \
+              --error \
+              --metrics=off \
+              --json-output=reports/semgrep.json \
+              server client common web ci || status=$?
+            if [ "$status" -ne 2 ]; then exit "$status"; fi
+            echo "Semgrep не запустился (код 2), попытка $attempt из 3"
+            sleep 15
+          done
+          exit 2
 
       - uses: actions/upload-artifact@v4
         if: always()
