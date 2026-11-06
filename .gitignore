@@ -85,3 +85,6 @@ Desktop.ini
 reports/
 image.tar.gz
 filemanager-src.tar.gz
+
+# Образцы вредоносных файлов для ручной проверки
+samples-vuln/
